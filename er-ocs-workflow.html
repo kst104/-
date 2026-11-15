@@ -1,0 +1,715 @@
+<title>응급실 OCS 워크플로우</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* Layout: 상단 워크플로우 다이어그램 → 3열 작업 화면 (환자 목록 · 환자 상세 · 알림/OCS 로그) */
+:root{
+  --bg:#f2f5f5; --surface:#ffffff; --surface-2:#f7f9f9; --ink:#132224; --muted:#5a6a6c; --line:#d5dfdf;
+  --accent:#0d6b71; --accent-soft:#dfeeef; --on-accent:#ffffff;
+  --crit:#c42b2b; --crit-soft:#fbe9e9; --warn:#a86300; --warn-soft:#fff3df;
+  --ok:#2b7a31; --ok-soft:#e6f3e7; --info:#1d5ca3; --info-soft:#e5eefa;
+  --lane-1:#eef4f4; --lane-2:#e6f0f1; --lane-3:#eef2f4;
+  --f-body:"Noto Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --r:8px;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1516; --surface:#162021; --surface-2:#1b2627; --ink:#e2ebeb; --muted:#94a6a7; --line:#2a3a3b;
+  --accent:#55b6bc; --accent-soft:#17383a; --on-accent:#08292b;
+  --crit:#ff7272; --crit-soft:#3b1a1a; --warn:#f2b350; --warn-soft:#382a12; --ok:#6cc871; --ok-soft:#173019; --info:#80b2f2; --info-soft:#172a42;
+  --lane-1:#141e1f; --lane-2:#172526; --lane-3:#151d21; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1516; --surface:#162021; --surface-2:#1b2627; --ink:#e2ebeb; --muted:#94a6a7; --line:#2a3a3b;
+  --accent:#55b6bc; --accent-soft:#17383a; --on-accent:#08292b;
+  --crit:#ff7272; --crit-soft:#3b1a1a; --warn:#f2b350; --warn-soft:#382a12; --ok:#6cc871; --ok-soft:#173019; --info:#80b2f2; --info-soft:#172a42;
+  --lane-1:#141e1f; --lane-2:#172526; --lane-3:#151d21; color-scheme:dark}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:14px;line-height:1.5}
+.wrap{max-width:1500px;margin:0 auto;padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:20px}
+h1{font-size:22px;margin:0;text-wrap:balance}
+h2{font-size:16px;margin:0;text-wrap:balance}
+h3{font-size:13px;margin:0;color:var(--muted);font-weight:500;letter-spacing:.04em}
+.mono{font-family:var(--f-mono)}
+.muted{color:var(--muted)}
+.num{font-variant-numeric:tabular-nums}
+header{display:flex;flex-direction:column;gap:6px}
+.notice{background:var(--warn-soft);color:var(--ink);border-left:3px solid var(--warn);padding:8px 12px;border-radius:4px;font-size:13px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.scroll-x{overflow-x:auto}
+/* flow */
+#flow svg{display:block;min-width:1180px;width:100%;height:auto}
+.lane1{fill:var(--lane-1)} .lane2{fill:var(--lane-2)} .lane3{fill:var(--lane-3)}
+.lane-t{fill:var(--muted);font-size:12px;font-weight:500;letter-spacing:.04em}
+.node rect{fill:var(--surface);stroke:var(--accent);stroke-width:1.5}
+.node.sys rect{fill:var(--accent-soft)}
+.node.alert rect{stroke:var(--crit);fill:var(--crit-soft)}
+.node .n{fill:var(--accent);font:500 11px var(--f-mono)}
+.node.alert .n{fill:var(--crit)}
+.node .t{fill:var(--ink);font-size:13px;font-weight:700}
+.node .s{fill:var(--muted);font-size:11px}
+.edge{fill:none;stroke:var(--muted);stroke-width:1.4}
+.edge.loop{stroke:var(--warn);stroke-dasharray:5 4}
+.edge-l{fill:var(--muted);font-size:11px}
+.edge-l.loop{fill:var(--warn)}
+.ah{fill:var(--muted)} .ah2{fill:var(--warn)}
+/* toolbar */
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+.clock{font:500 22px var(--f-mono);font-variant-numeric:tabular-nums}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{border:0;border-right:1px solid var(--line);border-radius:0}
+.seg button:last-child{border-right:0}
+button{font:inherit;font-size:13px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:5px 10px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.on,button.primary{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+button.sm{font-size:12px;padding:2px 8px}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input,select{font:inherit;font-size:13px;background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:0}
+/* app grid */
+.app{display:grid;grid-template-columns:280px minmax(0,1fr) 330px;gap:16px;align-items:start}
+@media (max-width:1180px){.app{grid-template-columns:260px minmax(0,1fr)}.side{grid-column:1/-1}}
+@media (max-width:760px){.app{grid-template-columns:minmax(0,1fr)}}
+/* patient cards */
+.plist{display:flex;flex-direction:column;gap:8px}
+.pcard{all:unset;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);cursor:pointer;background:var(--surface)}
+.pcard:hover{border-color:var(--accent)}
+.pcard.sel{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent);background:var(--surface-2)}
+.pcard:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.prow{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.pname{font-weight:700}
+.pmeta{font-size:12px;color:var(--muted)}
+.stages{display:grid;grid-template-columns:repeat(6,1fr);gap:3px}
+.stages i{height:5px;border-radius:2px;background:var(--line)}
+.stages i.d{background:var(--accent)} .stages i.a{background:var(--warn)}
+.stage-l{display:grid;grid-template-columns:repeat(6,1fr);gap:3px;font-size:10px;color:var(--muted);text-align:center}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:500;padding:1px 7px;border-radius:999px;white-space:nowrap;background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+.pill.crit{background:var(--crit-soft);color:var(--crit);border-color:transparent}
+.pill.warn{background:var(--warn-soft);color:var(--warn);border-color:transparent}
+.pill.ok{background:var(--ok-soft);color:var(--ok);border-color:transparent}
+.pill.info{background:var(--info-soft);color:var(--info);border-color:transparent}
+.pill.acc{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+details.reg summary{cursor:pointer;font-weight:500;color:var(--accent)}
+.form{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.form label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted)}
+.form .full{grid-column:1/-1}
+/* detail */
+.dhead{display:flex;flex-wrap:wrap;justify-content:space-between;gap:8px;align-items:flex-start}
+.dgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px}
+@media (max-width:1360px){.dgrid{grid-template-columns:minmax(0,1fr)}}
+.col{display:flex;flex-direction:column;gap:16px;min-width:0}
+.entry{display:flex;flex-direction:column;gap:8px}
+.entry-row{display:flex;gap:8px;flex-wrap:wrap}
+.entry-row input{flex:1 1 220px;font-family:var(--f-mono);font-size:14px;text-transform:uppercase}
+.preview{display:flex;flex-wrap:wrap;gap:5px;min-height:22px;font-size:12px}
+.chip{font-family:var(--f-mono);font-size:12px;padding:1px 7px;border-radius:4px;background:var(--accent-soft);color:var(--accent)}
+.chip.bad{background:var(--crit-soft);color:var(--crit)}
+.chip.dup{background:var(--warn-soft);color:var(--warn)}
+.quick{display:flex;flex-wrap:wrap;gap:6px}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-weight:500;color:var(--muted);font-size:12px;white-space:nowrap}
+td.v{font-family:var(--f-mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+tr.grp td{background:var(--surface-2);font-size:12px;color:var(--muted)}
+tr.grp td b{color:var(--ink)}
+td.f-H{color:var(--warn);font-weight:700} td.f-L{color:var(--info);font-weight:700}
+td.f-C{color:var(--crit);font-weight:700;background:var(--crit-soft)}
+.sheet{border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.sheet-h{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 10px;background:var(--surface-2);border-bottom:1px solid var(--line)}
+.sheet-b{padding:0}
+.rad{padding:10px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:4px}
+.rad:last-child{border-bottom:0}
+.rad p{margin:0}
+.rad.C{background:var(--crit-soft)}
+.empty{padding:14px;color:var(--muted);font-size:13px}
+.cp{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:8px 0;border-bottom:1px solid var(--line)}
+.cp:last-child{border-bottom:0}
+.cp .r{font-size:12px;color:var(--muted)}
+.cd{font-family:var(--f-mono);font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cd.over{color:var(--crit)}
+/* side */
+.side{display:flex;flex-direction:column;gap:16px}
+.alist{display:flex;flex-direction:column;gap:6px;max-height:420px;overflow-y:auto}
+.al{border:1px solid var(--line);border-left:3px solid var(--muted);border-radius:6px;padding:7px 9px;display:flex;flex-direction:column;gap:3px;font-size:13px}
+.al.crit{border-left-color:var(--crit)} .al.warn{border-left-color:var(--warn)} .al.ok{border-left-color:var(--ok)} .al.info{border-left-color:var(--info)}
+.al.acked{opacity:.6}
+.al .h{display:flex;justify-content:space-between;gap:6px;font-size:11px;color:var(--muted)}
+.al .acts{display:flex;gap:6px;flex-wrap:wrap}
+.log{font-family:var(--f-mono);font-size:11px;line-height:1.55;max-height:300px;overflow:auto;background:var(--surface-2);border-radius:6px;padding:8px;white-space:pre;color:var(--muted)}
+.log b{color:var(--accent);font-weight:500}
+.log em{color:var(--ink);font-style:normal}
+/* toasts */
+#toasts{position:fixed;right:max(12px,env(safe-area-inset-right,0px));top:calc(12px + env(safe-area-inset-top,0px));display:flex;flex-direction:column;gap:8px;z-index:50;width:min(360px,calc(100vw - 24px))}
+.toast{background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--info);border-radius:8px;padding:10px 12px;box-shadow:0 6px 24px rgba(0,0,0,.18);display:flex;flex-direction:column;gap:4px;font-size:13px}
+.toast.crit{border-left-color:var(--crit)} .toast.warn{border-left-color:var(--warn)} .toast.ok{border-left-color:var(--ok)}
+.toast .tt{font-weight:700}
+@media (prefers-reduced-motion:no-preference){.toast{animation:tin .25s ease-out}@keyframes tin{from{transform:translateY(-6px);opacity:.3}to{transform:none;opacity:1}}}
+.notes{font-size:12.5px;color:var(--muted);display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px 24px}
+.notes h3{margin-bottom:4px}
+.notes ul{margin:0;padding-left:18px}
+kbd{font-family:var(--f-mono);font-size:11px;border:1px solid var(--line);border-radius:3px;padding:0 4px}
+</style>
+
+<div class="wrap">
+<header>
+  <h1>응급실 OCS 워크플로우</h1>
+  <div class="muted">환자 등록 → 오더 입력(단일·세트) → OCS 전송 → 임상병리·영상 결과 모니터링 → 알림 확인 → 체크포인트 판단 → 다음 단계</div>
+  <div class="notice"><b>시뮬레이션 화면입니다.</b> 실제 OCS와 연결되어 있지 않으며 환자·결과·오더코드·참고치·Critical 기준은 모두 예시입니다. 실제 병원 코드와 기준으로 바꿔야 사용할 수 있습니다.</div>
+</header>
+
+<section class="panel" id="flow">
+  <h2>워크플로우</h2>
+  <div class="scroll-x" id="flowbox"></div>
+</section>
+
+<section class="panel">
+  <div class="bar">
+    <h2>시뮬레이터</h2>
+    <span class="clock" id="clock">--:--:--</span>
+    <span class="muted" style="font-size:12px">가상 시계</span>
+    <div class="seg" role="group" aria-label="진행 속도">
+      <button data-act="speed" data-v="1">×1</button>
+      <button data-act="speed" data-v="20">×20</button>
+      <button data-act="speed" data-v="60">×60</button>
+    </div>
+    <button data-act="pause" id="pauseBtn">일시정지</button>
+    <button data-act="jump" data-v="10">+10분</button>
+    <button data-act="reset">초기화</button>
+  </div>
+</section>
+
+<div class="app">
+  <aside class="panel">
+    <div class="prow"><h2>응급실 환자</h2><span class="pill" id="pcount"></span></div>
+    <div class="plist" id="plist"></div>
+    <details class="reg">
+      <summary>+ 환자 등록</summary>
+      <form class="form" id="regForm" autocomplete="off">
+        <label class="full">이름<input id="rName" required maxlength="20" placeholder="예: 최OO"></label>
+        <label>성별<select id="rSex"><option value="M">남</option><option value="F">여</option></select></label>
+        <label>나이<input id="rAge" type="number" min="0" max="120" required value="45"></label>
+        <label>KTAS<select id="rKtas"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option></select></label>
+        <label>경로(프로토콜)<select id="rPath"><option value="general">일반</option><option value="cp">흉통</option><option value="stroke">뇌졸중 의심</option><option value="sepsis">패혈증 의심</option></select></label>
+        <label class="full">주호소<input id="rCc" maxlength="60" placeholder="예: 복통 2시간"></label>
+        <button class="primary full" type="submit">등록</button>
+      </form>
+    </details>
+  </aside>
+
+  <main class="panel" id="detailPanel">
+    <div id="dhead"></div>
+    <div class="entry">
+      <h3>오더 입력 — 단일 코드 또는 세트 코드 (여러 개는 쉼표·공백으로 구분)</h3>
+      <form class="entry-row" id="orderForm" autocomplete="off">
+        <input id="orderInput" list="codeList" placeholder="예: CBC  /  CBC, CRP  /  SET-CP" aria-label="오더 코드">
+        <button class="primary" type="submit">OCS 전송</button>
+      </form>
+      <datalist id="codeList"></datalist>
+      <div class="preview" id="preview"></div>
+      <div class="quick" id="quickSets"></div>
+    </div>
+    <div id="dbody"></div>
+  </main>
+
+  <aside class="side">
+    <section class="panel">
+      <div class="prow"><h2>알림</h2><span class="pill crit" id="unack"></span></div>
+      <div class="alist" id="alist"></div>
+    </section>
+    <section class="panel">
+      <div class="prow"><h2>OCS 인터페이스 로그</h2><span class="pill">형식 예시</span></div>
+      <div class="log" id="log"></div>
+    </section>
+  </aside>
+</div>
+
+<section class="panel">
+  <h2>코드 목록 · 기준 · 실제 연동 시 확인할 것</h2>
+  <div class="notes" id="notes"></div>
+</section>
+</div>
+<div id="toasts" aria-live="polite"></div>
+
+<script>
+(function(){
+"use strict";
+const MIN=60000;
+const pad=n=>String(n).padStart(2,'0');
+const hm=t=>{const d=new Date(t);return pad(d.getHours())+':'+pad(d.getMinutes())};
+const hms=t=>{const d=new Date(t);return hm(t)+':'+pad(d.getSeconds())};
+const stamp=t=>{const d=new Date(t);return ''+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+pad(d.getHours())+pad(d.getMinutes())+pad(d.getSeconds())};
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const $=id=>document.getElementById(id);
+
+/* ── 오더 코드 카탈로그 (예시) ── acc: 접수까지 분, exec: 시행(촬영/채취)까지 분, tat: 결과까지 분 */
+const CAT={
+  CBC:{n:'일반혈액검사 (CBC)',c:'LAB',acc:3,tat:30,items:['WBC','Hb','PLT']},
+  BMP:{n:'전해질·신기능',c:'LAB',acc:3,tat:40,items:['Na','K','Cl','BUN','Cr']},
+  CRP:{n:'C-반응단백',c:'LAB',acc:3,tat:40,items:['CRP']},
+  TNI:{n:'고감도 트로포닌 I',c:'LAB',acc:3,tat:40,items:['hsTnI']},
+  LAC:{n:'젖산 (Lactate)',c:'LAB',acc:2,tat:15,items:['Lactate']},
+  GLU:{n:'POCT 혈당',c:'LAB',acc:1,tat:4,items:['Glucose']},
+  PT:{n:'PT / INR',c:'LAB',acc:3,tat:35,items:['INR']},
+  BCX:{n:'혈액배양 2쌍',c:'LAB',acc:2,exec:8,tat:8,culture:true},
+  ECG:{n:'12유도 심전도',c:'RAD',acc:1,exec:3,tat:5},
+  CXR:{n:'흉부 X-ray',c:'RAD',acc:2,exec:10,tat:35},
+  CTB:{n:'뇌 CT (비조영)',c:'RAD',acc:2,exec:12,tat:28},
+  CTA:{n:'두경부 CT 혈관조영',c:'RAD',acc:3,exec:20,tat:38},
+  CEF:{n:'세프트리악손 2 g IV',c:'MED',acc:2,tat:18},
+  NS:{n:'생리식염수 30 mL/kg IV',c:'MED',acc:2,tat:10},
+  'CS-CARD':{n:'심장내과 협진',c:'CONS',acc:2,tat:30},
+  'CS-NEUR':{n:'신경과 협진',c:'CONS',acc:2,tat:15},
+};
+const SETS={
+  'SET-CP':{n:'흉통 세트',codes:['ECG','TNI','CBC','BMP','CXR']},
+  'SET-STROKE':{n:'뇌졸중 세트',codes:['GLU','CTB','CTA','CBC','PT']},
+  'SET-SEPSIS':{n:'패혈증 세트',codes:['LAC','BCX','CBC','BMP','CRP','CXR']},
+};
+const CATNAME={LAB:'진단검사',RAD:'영상·기능',MED:'약품',CONS:'협진'};
+const STEPS={LAB:['전송','접수','결과'],RAD:['전송','접수','시행','판독'],MED:['전송','접수','투약'],CONS:['의뢰','접수','회신']};
+
+/* ── 참고치 / Critical (예시) ── cl/ch: 이하/이상이면 Critical */
+const REF={
+  WBC:{u:'×10³/µL',lo:4.0,hi:10.0,cl:1.0,ch:30,d:1},
+  Hb:{u:'g/dL',lo:12.0,hi:17.0,cl:7.0,d:1},
+  PLT:{u:'×10³/µL',lo:150,hi:400,cl:50,d:0},
+  Na:{u:'mmol/L',lo:135,hi:145,cl:120,ch:160,d:0},
+  K:{u:'mmol/L',lo:3.5,hi:5.1,cl:2.8,ch:6.0,d:1},
+  Cl:{u:'mmol/L',lo:98,hi:107,d:0},
+  BUN:{u:'mg/dL',lo:8,hi:23,d:0},
+  Cr:{u:'mg/dL',lo:0.6,hi:1.2,d:2},
+  CRP:{u:'mg/dL',lo:0,hi:0.5,d:2},
+  hsTnI:{u:'ng/L',lo:0,hi:34,ch:100,d:0},
+  Lactate:{u:'mmol/L',lo:0.5,hi:2.0,ch:4.0,d:1},
+  Glucose:{u:'mg/dL',lo:70,hi:140,cl:50,ch:450,d:0},
+  INR:{u:'',lo:0.8,hi:1.2,ch:4.0,d:2},
+};
+function flagOf(item,v){const r=REF[item];if(r.ch!=null&&v>=r.ch)return'C';if(r.cl!=null&&v<=r.cl)return'C';if(v>r.hi)return'H';if(v<r.lo)return'L';return'N'}
+function refText(item){const r=REF[item];return r.lo===0?'< '+r.hi:r.lo+' – '+r.hi}
+
+/* ── 예시 환자 시나리오 결과 (배열 = n번째 오더 값) ── */
+const SCEN={
+  cp:{lab:{hsTnI:[86,214],K:4.2,Na:139,Cl:102,BUN:17,Cr:0.98,WBC:8.1,Hb:14.2,PLT:231},
+      rad:{ECG:['A','동성리듬 82회/분. V4–V6 ST 분절 하강 1 mm. 비교할 이전 심전도 없음.'],CXR:['N','활동성 폐병변 없음. 심비대 없음.']},
+      suggest:{TNI:'CS-CARD',ECG:'TNI'}},
+  stroke:{lab:{Glucose:132,INR:1.05,WBC:7.4,Hb:13.1,PLT:198},
+      rad:{CTB:['A','급성 두개내 출혈 없음. 좌측 중대뇌동맥 고음영 징후 의심.'],CTA:['C','좌측 중대뇌동맥 M1 분절 폐색.']},
+      suggest:{CTA:'CS-NEUR',CTB:'CTA'}},
+  sepsis:{lab:{Lactate:[4.6,2.8],WBC:18.2,Hb:11.4,PLT:142,Na:133,K:5.4,Cl:99,BUN:38,Cr:1.92,CRP:15.3},
+      rad:{CXR:['A','우하엽 경화. 폐렴 의심.']},
+      suggest:{LAC:'NS'}},
+};
+const RAD_DEFAULT={ECG:'동성리듬. 특이 소견 없음.',CXR:'활동성 병변 없음.',CTB:'급성 두개내 병변 없음.',CTA:'유의한 협착·폐색 없음.'};
+const PATHNAME={general:'일반',cp:'흉통',stroke:'뇌졸중 의심',sepsis:'패혈증 의심'};
+
+/* ── 체크포인트 정의 ── due: 기한, met: 달성 시각, sched: 예정형(재검 등), na: 해당없음 */
+let now=0;
+const ordersOf=(p,code)=>p.orders.filter(o=>o.code===code);
+const nth=(p,code,k)=>ordersOf(p,code)[(k||1)-1];
+const tRes=(p,code,k)=>{const o=nth(p,code,k);return o&&now>=o.tRes?o.tRes:null};
+const tExec=(p,code,k)=>{const o=nth(p,code,k);return o&&now>=o.tExec?o.tExec:null};
+const tOrd=(p,code,k)=>{const o=nth(p,code,k);return o?o.t:null};
+const labVal=(p,code,item,k)=>{const o=nth(p,code,k);if(!o||!o.result||!o.result.vals)return null;const r=o.result.vals.find(x=>x.item===item);return r?r.v:null};
+const CPS={
+  general:[
+    {id:'ord',label:'초기 오더 입력',rule:'내원 후 30분 이내 (예시)',due:p=>p.arrive+30*MIN,met:p=>p.orders.length?p.orders[0].t:null,next:'결과 도착 후 재평가'},
+  ],
+  cp:[
+    {id:'ecg',label:'심전도 시행',rule:'내원 후 10분 이내',due:p=>p.arrive+10*MIN,met:p=>tExec(p,'ECG'),quick:'ECG',next:'심전도 판독 · 트로포닌 결과 대기'},
+    {id:'tni1',label:'hs-TnI 1차 결과',rule:'내원 후 60분 이내 (예시)',due:p=>p.arrive+60*MIN,met:p=>tRes(p,'TNI'),quick:'TNI',next:'2시간 뒤 재검 예약됨'},
+    {id:'tni2',label:'hs-TnI 재검 오더',rule:'1차 결과 후 2시간 (0/2h 프로토콜 예시)',sched:true,due:p=>{const r=tRes(p,'TNI');return r?r+120*MIN:null},met:p=>tOrd(p,'TNI',2),quick:'TNI',next:'변화량(델타)으로 판정'},
+  ],
+  stroke:[
+    {id:'glu',label:'혈당 확인',rule:'내원 후 15분 이내 (예시)',due:p=>p.arrive+15*MIN,met:p=>tRes(p,'GLU'),quick:'GLU'},
+    {id:'ct',label:'뇌 CT 촬영 시작',rule:'내원 후 25분 이내',due:p=>p.arrive+25*MIN,met:p=>tExec(p,'CTB'),quick:'CTB',next:'판독 대기 (45분 목표)'},
+    {id:'ctr',label:'뇌 CT 판독',rule:'내원 후 45분 이내',due:p=>p.arrive+45*MIN,met:p=>tRes(p,'CTB'),quick:'CTB',next:'출혈 여부 확인 → 재관류 치료 평가'},
+  ],
+  sepsis:[
+    {id:'lac',label:'젖산 측정',rule:'분류 후 1시간 이내',due:p=>p.arrive+60*MIN,met:p=>tRes(p,'LAC'),quick:'LAC'},
+    {id:'bcx',label:'혈액배양 채취',rule:'항생제 투여 전',due:p=>{const a=tRes(p,'CEF');return a!=null?Math.min(a,p.arrive+60*MIN):p.arrive+60*MIN},met:p=>tExec(p,'BCX'),quick:'BCX'},
+    {id:'abx',label:'광범위 항생제 투여',rule:'분류 후 1시간 이내',due:p=>p.arrive+60*MIN,met:p=>tRes(p,'CEF'),quick:'CEF'},
+    {id:'fluid',label:'수액 30 mL/kg 시작',rule:'젖산 ≥4 또는 저혈압 시, 1시간 이내',due:p=>{const v=labVal(p,'LAC','Lactate');return v!=null&&v>=4?p.arrive+60*MIN:null},
+      na:p=>{const v=labVal(p,'LAC','Lactate');return v!=null&&v<4&&!p.orders.some(o=>o.code==='NS')},met:p=>tRes(p,'NS'),quick:'NS'},
+    {id:'lac2',label:'젖산 재측정 오더',rule:'초기 젖산 >2 시, 결과 후 2시간 (예시)',sched:true,due:p=>{const v=labVal(p,'LAC','Lactate');const r=tRes(p,'LAC');return v!=null&&v>2?r+120*MIN:null},
+      na:p=>{const v=labVal(p,'LAC','Lactate');return v!=null&&v<=2},met:p=>tOrd(p,'LAC',2),quick:'LAC'},
+  ],
+};
+const GRACE=15*MIN; // 예정형 체크포인트 유예
+
+/* ── 상태 ── */
+let S, speed=20, paused=false, dirty=true;
+function rng(seed){let s=seed>>>0||1;return()=>{s=(s*1664525+1013904223)>>>0;return s/4294967296}}
+function hash(str){let h=2166136261;for(const c of str){h^=c.charCodeAt(0);h=Math.imul(h,16777619)}return h>>>0}
+
+function newPatient(o){
+  S.seq++;
+  const id='P'+S.seq;
+  const d=new Date(o.arrive);
+  const p={id,regNo:'ER-'+String(d.getFullYear()).slice(2)+pad(d.getMonth()+1)+pad(d.getDate())+'-'+String(S.seq).padStart(3,'0'),
+    name:o.name,sex:o.sex,age:o.age,ktas:o.ktas,cc:o.cc,path:o.path,scen:o.scen||null,arrive:o.arrive,orders:[],cp:{},dispo:null,example:!!o.example};
+  S.patients.push(p);
+  log('←',`ADT^A04  PID|${p.regNo}|${o.example?'(가상)':''}${p.sex}/${p.age}  PV1|E|ER  KTAS|${p.ktas}`);
+  return p;
+}
+function placeOrder(p,code,setFrom,at){
+  const c=CAT[code];const t=at!=null?at:now;S.oseq++;
+  const o={id:'O'+String(S.oseq).padStart(4,'0'),code,setFrom:setFrom||null,t,
+    tAcc:t+c.acc*MIN,tExec:t+(c.exec!=null?c.exec:c.tat)*MIN,tRes:t+c.tat*MIN,st:-1,result:null,ack:null};
+  p.orders.push(o);
+  log('→',`ORM^O01  ORC|NW|${o.id}  OBR|${code}^${c.n}  PID|${p.regNo}${setFrom?'  SET|'+setFrom:''}`,t);
+  dirty=true;return o;
+}
+function init(){
+  now=new Date(2026,10,15,14,0,0).getTime();
+  S={seq:0,oseq:0,aseq:0,patients:[],alerts:[],log:[],sel:null};
+  const p1=newPatient({name:'김OO',sex:'M',age:58,ktas:2,cc:'흉통 (40분 전 시작, 쥐어짜는 양상)',path:'cp',scen:SCEN.cp,arrive:now-2*MIN,example:true});
+  const p2=newPatient({name:'이OO',sex:'F',age:72,ktas:1,cc:'우측 편마비·구음장애 (최종 정상 13:20)',path:'stroke',scen:SCEN.stroke,arrive:now-6*MIN,example:true});
+  const p3=newPatient({name:'박OO',sex:'M',age:81,ktas:2,cc:'발열·의식 저하 (요양원 전원)',path:'sepsis',scen:SCEN.sepsis,arrive:now-12*MIN,example:true});
+  SETS['SET-SEPSIS'].codes.forEach(c=>placeOrder(p3,c,'SET-SEPSIS',now-10*MIN));
+  placeOrder(p2,'GLU',null,now-4*MIN);placeOrder(p2,'CTB',null,now-4*MIN);
+  S.sel=p1.id;
+  S.alerts=[];document.getElementById('toasts').innerHTML='';
+  dirty=true;process(true);
+}
+
+/* ── 결과 생성 ── */
+function makeResult(p,o){
+  const c=CAT[o.code];const k=ordersOf(p,o.code).indexOf(o)+1;
+  if(c.c==='LAB'){
+    if(c.culture)return{text:'채취 완료 — 배양 진행 중 (최종 보고는 수일 소요)',flag:'N'};
+    const r=rng(hash(p.id+o.code+k));
+    const vals=c.items.map(item=>{
+      const s=p.scen&&p.scen.lab[item];let v=Array.isArray(s)?(s[k-1]!=null?s[k-1]:s[s.length-1]):s;
+      const R=REF[item];
+      if(v==null){v=R.lo+(R.hi-R.lo)*(0.2+0.6*r());}
+      v=Number(v.toFixed(R.d));
+      return{item,v,u:R.u,ref:refText(item),f:flagOf(item,v)};
+    });
+    const worst=vals.some(x=>x.f==='C')?'C':vals.some(x=>x.f!=='N')?'A':'N';
+    return{vals,flag:worst};
+  }
+  if(c.c==='RAD'){const s=p.scen&&p.scen.rad[o.code];return s?{flag:s[0],text:s[1]}:{flag:'N',text:RAD_DEFAULT[o.code]||'특이 소견 없음.'}}
+  if(c.c==='MED')return{flag:'N',text:o.code==='NS'?'투여 시작':'투약 완료'};
+  return{flag:'N',text:'회신: 응급실 방문 진료 예정'};
+}
+
+/* ── 알림 ── */
+function alert_(p,lvl,title,body,quick,o){
+  const a={id:'A'+(++S.aseq),pid:p?p.id:null,lvl,title,body,quick:quick||null,t:now,ack:null,oid:o?o.id:null,
+    until:lvl==='crit'?Infinity:Date.now()+(lvl==='warn'?12000:6000)};
+  S.alerts.unshift(a);if(S.alerts.length>120)S.alerts.pop();dirty=true;return a;
+}
+function log(dir,msg,t){S.log.unshift({t:t!=null?t:now,dir,msg});if(S.log.length>80)S.log.pop()}
+
+/* ── 진행 처리 ── */
+function stIndex(o){const c=CAT[o.code];const steps=STEPS[c.c];
+  if(now<o.tAcc)return 0;
+  if(steps.length===4){if(now<o.tExec)return 1;if(now<o.tRes)return 2;return 3}
+  if(now<o.tRes)return 1;return 2}
+function process(silent){
+  for(const p of S.patients){
+    for(const o of p.orders){
+      const si=stIndex(o);if(si===o.st)continue;
+      const prev=o.st;o.st=si;dirty=true;
+      const c=CAT[o.code];const steps=STEPS[c.c];
+      if(si>=1&&prev<1)log('←',`ORR^O02  ACK|${o.id}  ${steps[1]}`,o.tAcc);
+      if(steps.length===4&&si>=2&&prev<2)log('←',`ORM^O01  ORC|SC|${o.id}  ${steps[2]}`,o.tExec);
+      if(si===steps.length-1){
+        o.result=makeResult(p,o);
+        const r=o.result;
+        if(r.vals)log('←',`ORU^R01  ${o.id}  `+r.vals.map(v=>`OBX|${v.item}|${v.v}|${v.u}|${v.f}`).join('  '),o.tRes);
+        else log('←',`ORU^R01  ${o.id}  OBX|TX|${r.text}|${r.flag}`,o.tRes);
+        const sug=p.scen&&p.scen.suggest[o.code];
+        if(r.flag==='C'){
+          const txt=r.vals?r.vals.filter(v=>v.f==='C').map(v=>`${v.item} ${v.v} ${v.u}`).join(', '):r.text;
+          alert_(p,'crit',`Critical · ${c.n}`,txt,sug,o);
+        }else if(r.flag==='A'){
+          const txt=r.vals?'이상치: '+r.vals.filter(v=>v.f!=='N').map(v=>`${v.item} ${v.v}${v.f==='H'?'↑':'↓'}`).join(', '):'판독 이상: '+r.text;
+          alert_(p,'warn',`결과 도착 · ${c.n}`,txt,sug,o);
+        }else{
+          alert_(p,'info',`${steps[steps.length-1]} · ${c.n}`,r.text||'정상 범위',null,o);
+        }
+      }
+    }
+    evalCheckpoints(p);
+  }
+}
+function evalCheckpoints(p){
+  for(const d of CPS[p.path]){
+    const st=p.cp[d.id]||(p.cp[d.id]={state:null,dueAlert:false});
+    const due=d.due(p),met=d.met(p);let s;
+    if(met!=null)s=(due!=null&&met>(d.sched?due+GRACE:due))?'late':'met';
+    else if(d.na&&d.na(p))s='na';
+    else if(due==null)s='wait';
+    else if(d.sched){s=now<due?'sched':now<=due+GRACE?'due':'over'}
+    else s=now<=due?'pend':'over';
+    if(s!==st.state){
+      const prev=st.state;st.state=s;dirty=true;st.due=due;st.met=met;
+      if(prev!==null){
+        if(s==='met')alert_(p,'ok',`체크포인트 달성 · ${d.label}`,(d.next?'다음: '+d.next:'기준 충족')+` (${hm(met)})`);
+        if(s==='late')alert_(p,'warn',`지연 달성 · ${d.label}`,`${d.rule} · 달성 ${hm(met)}`);
+        if(s==='due')alert_(p,'warn',`예정 시점 도달 · ${d.label}`,`${d.rule} → 지금 오더하세요`,d.quick);
+        if(s==='over')alert_(p,'crit',`체크포인트 지연 · ${d.label}`,`${d.rule} 기한 ${hm(d.sched?due+GRACE:due)} 경과`,d.quick);
+        if(s==='sched')alert_(p,'info',`예정 체크포인트 등록 · ${d.label}`,`${hm(due)} 예정`);
+      }
+    }
+    st.due=due;st.met=met;
+  }
+}
+
+/* ── 오더 파싱 ── */
+function parse(str,p){
+  const toks=str.toUpperCase().split(/[\s,;+]+/).map(t=>t.replace(/^#/,'')).filter(Boolean);
+  const out=[],bad=[],seen=new Set();
+  for(const t of toks){
+    if(SETS[t]){for(const c of SETS[t].codes)push(c,t)}
+    else if(CAT[t])push(t,null);
+    else bad.push(t);
+  }
+  function push(code,set){
+    if(seen.has(code))return;seen.add(code);
+    const active=p&&p.orders.some(o=>o.code===code&&o.st<STEPS[CAT[code].c].length-1);
+    out.push({code,set,dup:!!active});
+  }
+  return{out,bad};
+}
+
+/* ── 렌더 ── */
+const sel=()=>S.patients.find(p=>p.id===S.sel)||S.patients[0];
+function stages(p){
+  const lr=p.orders.filter(o=>CAT[o.code].c==='LAB'||CAT[o.code].c==='RAD');
+  const allRes=lr.length&&lr.every(o=>o.result);
+  const unack=S.alerts.some(a=>a.pid===p.id&&a.lvl==='crit'&&!a.ack);
+  const anyRes=p.orders.some(o=>o.result);
+  return [
+    'd',
+    p.orders.length?'d':'a',
+    !p.orders.length?'':p.orders.every(o=>o.st>=1)?'d':'a',
+    !lr.length?'':allRes?'d':'a',
+    !anyRes?'':unack?'a':'d',
+    p.dispo?'d':(allRes&&!unack?'a':''),
+  ];
+}
+function renderList(){
+  $('pcount').textContent=S.patients.length+'명';
+  $('plist').innerHTML=S.patients.map(p=>{
+    const crit=S.alerts.filter(a=>a.pid===p.id&&a.lvl==='crit'&&!a.ack).length;
+    const over=CPS[p.path].filter(d=>p.cp[d.id]&&p.cp[d.id].state==='over').length;
+    const st=stages(p);
+    return `<button class="pcard ${p.id===S.sel?'sel':''}" data-act="sel" data-pid="${p.id}">
+      <div class="prow"><span class="pname">${esc(p.name)}${p.example?' <span class="muted" style="font-weight:400;font-size:12px">가상</span>':''}</span><span class="pill ${p.ktas<=2?'crit':p.ktas===3?'warn':'ok'}">KTAS ${p.ktas}</span></div>
+      <div class="pmeta">${p.sex==='M'?'남':'여'}/${p.age} · ${esc(PATHNAME[p.path])} · 내원 ${hm(p.arrive)} · <span class="mono">${p.regNo}</span></div>
+      <div class="pmeta">${esc(p.cc||'')}</div>
+      <div class="stages">${st.map(x=>`<i class="${x}"></i>`).join('')}</div>
+      <div class="stage-l"><span>등록</span><span>오더</span><span>검사</span><span>결과</span><span>확인</span><span>처분</span></div>
+      ${crit||over||p.dispo?`<div class="prow" style="justify-content:flex-start;gap:6px">${crit?`<span class="pill crit">미확인 Critical ${crit}</span>`:''}${over?`<span class="pill warn">지연 ${over}</span>`:''}${p.dispo?`<span class="pill ok">${p.dispo.type} ${hm(p.dispo.t)}</span>`:''}</div>`:''}
+    </button>`}).join('');
+}
+function cdSpan(due,sched){return `<span class="cd" data-due="${due}" data-sched="${sched?1:0}"></span>`}
+function renderDetail(){
+  const p=sel();if(!p){$('dhead').innerHTML='<div class="empty">등록된 환자가 없습니다.</div>';$('dbody').innerHTML='';return}
+  $('dhead').innerHTML=`<div class="dhead">
+    <div><h2>${esc(p.name)} <span class="muted" style="font-weight:400">${p.sex==='M'?'남':'여'}/${p.age} · KTAS ${p.ktas} · ${esc(PATHNAME[p.path])}</span></h2>
+    <div class="pmeta"><span class="mono">${p.regNo}</span> · 내원 ${hm(p.arrive)} · 경과 <span class="cd" data-since="${p.arrive}"></span> · ${esc(p.cc||'')}</div></div>
+    <div class="quick" role="group" aria-label="처분">${['입원','중환자실','퇴원','전원'].map(t=>`<button class="sm ${p.dispo&&p.dispo.type===t?'on':''}" data-act="dispo" data-pid="${p.id}" data-v="${t}">${t}</button>`).join('')}</div>
+  </div>`;
+  // 체크포인트
+  const cps=CPS[p.path].map(d=>{
+    const st=p.cp[d.id]||{};const s=st.state;
+    const pill={met:['ok','달성'],late:['warn','지연 달성'],pend:['acc','진행'],sched:['info','예정'],due:['warn','도달'],over:['crit','지연'],wait:['','조건 대기'],na:['','해당 없음']}[s]||['','—'];
+    let right='';
+    if(s==='met'||s==='late')right=`<span class="cd">${hm(st.met)}</span>`;
+    else if(s==='pend')right=cdSpan(st.due,false);
+    else if(s==='sched')right=cdSpan(st.due,true);
+    else if(s==='due'||s==='over')right=cdSpan(d.sched?st.due+GRACE:st.due,false);
+    const canQuick=d.quick&&(s==='pend'||s==='due'||s==='over'||s==='sched')&&!(d.sched?false:p.orders.some(o=>o.code===d.quick));
+    return `<div class="cp"><span class="pill ${pill[0]}">${pill[1]}</span>
+      <div style="min-width:0"><div>${d.label}</div><div class="r">${d.rule}</div></div>
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;justify-content:flex-end">${right}${canQuick?`<button class="sm" data-act="quick" data-pid="${p.id}" data-v="${d.quick}">${d.quick} 오더</button>`:''}</div></div>`}).join('');
+  // 오더 현황
+  const orders=p.orders.slice().reverse().map(o=>{
+    const c=CAT[o.code];const steps=STEPS[c.c];const last=o.st===steps.length-1;
+    const cls=last?(o.result&&o.result.flag==='C'?'crit':o.result&&o.result.flag==='A'?'warn':'ok'):'acc';
+    const eta=last?hm(o.tRes):'예상 '+hm(o.tRes);
+    return `<tr><td class="mono">${o.code}</td><td>${c.n}${o.setFrom?` <span class="pill">${o.setFrom}</span>`:''}</td><td>${CATNAME[c.c]}</td><td><span class="pill ${cls}">${steps[Math.max(o.st,0)]}</span></td><td class="num">${hm(o.t)} → ${eta}</td></tr>`}).join('');
+  // 임상병리 결과지
+  const labs=p.orders.filter(o=>CAT[o.code].c==='LAB');
+  const labRows=labs.map(o=>{
+    const c=CAT[o.code];
+    const head=`<tr class="grp"><td colspan="5"><b class="mono">${o.code}</b> ${c.n} · 오더 ${o.id} · ${o.result?'결과 '+hm(o.tRes):(o.st>=1?'접수 '+hm(o.tAcc)+' · 검사 중 (예상 '+hm(o.tRes)+')':'전송됨 '+hm(o.t))}${o.ack?` · <span class="pill ok">확인 ${hm(o.ack)}</span>`:''}</td></tr>`;
+    if(!o.result)return head;
+    if(!o.result.vals)return head+`<tr><td colspan="5">${esc(o.result.text)}</td></tr>`;
+    return head+o.result.vals.map(v=>`<tr><td>${v.item}</td><td class="v f-${v.f}">${v.v}</td><td class="muted">${v.u}</td><td class="muted num">${v.ref}</td><td class="f-${v.f}" style="background:none">${{N:'',H:'H ↑',L:'L ↓',C:'Critical'}[v.f]}</td></tr>`).join('')}).join('');
+  // 영상 결과지
+  const rads=p.orders.filter(o=>CAT[o.code].c==='RAD').map(o=>{
+    const c=CAT[o.code];const steps=STEPS.RAD;
+    const f=o.result?o.result.flag:null;
+    return `<div class="rad ${f==='C'?'C':''}"><div class="prow"><span><b class="mono">${o.code}</b> ${c.n}</span><span class="pill ${f==='C'?'crit':f==='A'?'warn':f==='N'?'ok':'acc'}">${f==='C'?'Critical':f==='A'?'이상 소견':f==='N'?'정상':steps[Math.max(o.st,0)]}</span></div>
+      <div class="pmeta">오더 ${hm(o.t)} · 촬영 ${o.st>=2?hm(o.tExec):'대기'} · 판독 ${o.result?hm(o.tRes):'예상 '+hm(o.tRes)}${o.ack?` · 확인 ${hm(o.ack)}`:''}</div>
+      ${o.result?`<p>${esc(o.result.text)}</p>`:''}</div>`}).join('');
+  const other=p.orders.filter(o=>['MED','CONS'].includes(CAT[o.code].c));
+  $('dbody').innerHTML=`<div class="dgrid">
+    <div class="col">
+      <div class="sheet"><div class="sheet-h"><h3>체크포인트 · ${esc(PATHNAME[p.path])} 프로토콜</h3></div><div style="padding:0 10px">${cps}</div></div>
+      <div class="sheet"><div class="sheet-h"><h3>오더 현황</h3><span class="pill">${p.orders.length}건</span></div>
+        ${p.orders.length?`<div class="scroll-x"><table><thead><tr><th>코드</th><th>오더명</th><th>구분</th><th>상태</th><th>오더 → 결과</th></tr></thead><tbody>${orders}</tbody></table></div>`:'<div class="empty">아직 오더가 없습니다. 위 입력창에 코드를 넣거나 세트 버튼을 누르세요.</div>'}</div>
+      ${other.length?`<div class="sheet"><div class="sheet-h"><h3>투약 · 협진</h3></div>${other.map(o=>`<div class="rad"><div class="prow"><span><b class="mono">${o.code}</b> ${CAT[o.code].n}</span><span class="pill ${o.result?'ok':'acc'}">${STEPS[CAT[o.code].c][Math.max(o.st,0)]}</span></div><div class="pmeta">오더 ${hm(o.t)}${o.result?' · '+esc(o.result.text)+' '+hm(o.tRes):' · 예상 '+hm(o.tRes)}</div></div>`).join('')}</div>`:''}
+    </div>
+    <div class="col">
+      <div class="sheet"><div class="sheet-h"><h3>임상병리 결과지</h3><span class="pill">${labs.filter(o=>o.result).length}/${labs.length}</span></div>
+        ${labs.length?`<div class="scroll-x"><table><thead><tr><th>항목</th><th style="text-align:right">결과</th><th>단위</th><th>참고치(예시)</th><th>판정</th></tr></thead><tbody>${labRows}</tbody></table></div>`:'<div class="empty">진단검사 오더 없음</div>'}</div>
+      <div class="sheet"><div class="sheet-h"><h3>영상·기능검사 판독지</h3></div>${rads||'<div class="empty">영상 오더 없음</div>'}</div>
+    </div></div>`;
+  const ph=p.path;
+  $('quickSets').innerHTML='<span class="muted" style="font-size:12px;align-self:center">세트:</span>'+Object.keys(SETS).map(k=>`<button class="sm ${(ph==='cp'&&k==='SET-CP')||(ph==='stroke'&&k==='SET-STROKE')||(ph==='sepsis'&&k==='SET-SEPSIS')?'on':''}" data-act="fill" data-v="${k}" title="${SETS[k].codes.join(', ')}">${k} <span style="opacity:.75">${SETS[k].n}</span></button>`).join('');
+  updatePreview();
+}
+function renderAlerts(){
+  const un=S.alerts.filter(a=>a.lvl==='crit'&&!a.ack).length;
+  $('unack').textContent='미확인 '+un;$('unack').hidden=!un;
+  const pn=id=>{const p=S.patients.find(x=>x.id===id);return p?p.name:''};
+  const item=(a,toast)=>{
+    const p=S.patients.find(x=>x.id===a.pid);
+    const showQuick=a.quick&&p&&!p.orders.some(o=>o.code===a.quick&&o.t>=a.t-1)&&!(a.quick!=='TNI'&&a.quick!=='LAC'&&p.orders.some(o=>o.code===a.quick));
+    return `<div class="${toast?'toast':'al'} ${a.lvl} ${a.ack&&!toast?'acked':''}">
+      <div class="h"><span>${esc(pn(a.pid))} · ${hm(a.t)}</span><span>${{crit:'긴급',warn:'주의',info:'알림',ok:'달성'}[a.lvl]}</span></div>
+      <div class="${toast?'tt':''}" style="font-weight:700">${esc(a.title)}</div><div>${esc(a.body)}</div>
+      ${(a.lvl==='crit'&&!a.ack)||showQuick||toast?`<div class="acts">${a.lvl==='crit'&&!a.ack?`<button class="sm primary" data-act="ack" data-v="${a.id}">확인 (노티 수신)</button>`:''}${showQuick?`<button class="sm" data-act="quick" data-pid="${a.pid}" data-v="${a.quick}">${a.quick} 오더</button>`:''}${toast?`<button class="sm" data-act="sel" data-pid="${a.pid}">환자 보기</button>`:''}</div>`:''}
+      ${a.ack?`<div class="h"><span>확인 ${hm(a.ack)}</span></div>`:''}
+    </div>`};
+  $('alist').innerHTML=S.alerts.length?S.alerts.slice(0,60).map(a=>item(a,false)).join(''):'<div class="empty">알림 없음</div>';
+  const nowR=Date.now();
+  const toasts=S.alerts.filter(a=>(a.lvl==='crit'&&!a.ack)||(a.lvl==='warn'&&a.until>nowR)).slice(0,3);
+  $('toasts').innerHTML=toasts.map(a=>item(a,true)).join('');
+}
+function renderLog(){
+  $('log').innerHTML=S.log.slice().sort((a,b)=>b.t-a.t).slice(0,60).map(l=>`<b>${hms(l.t)}</b> ${l.dir==='→'?'<em>→ OCS</em>':'← OCS'}  ${esc(l.msg)}`).join('\n');
+}
+function updatePreview(){
+  const p=sel();const v=$('orderInput').value;
+  if(!v.trim()){$('preview').innerHTML='<span class="muted">입력하면 전송될 오더가 여기 펼쳐집니다. 세트 코드는 구성 오더로 자동 전개됩니다.</span>';return}
+  const {out,bad}=parse(v,p);
+  $('preview').innerHTML=out.map(x=>`<span class="chip ${x.dup?'dup':''}" title="${CAT[x.code].n}">${x.code}${x.set?' ·'+x.set.replace('SET-',''):''}${x.dup?' (진행 중·제외)':''}</span>`).join('')+bad.map(b=>`<span class="chip bad">${esc(b)} ?</span>`).join('');
+}
+function updateClocks(){
+  $('clock').textContent=hms(now);
+  document.querySelectorAll('[data-due]').forEach(el=>{
+    const due=+el.dataset.due;const d=due-now;const a=Math.abs(d);const m=Math.floor(a/MIN),s=Math.floor(a%MIN/1000);
+    const t=`${m}분 ${pad(s)}초`;
+    if(d>=0){el.textContent=(el.dataset.sched==='1'?'예정 '+hm(due)+' · ':'')+t+' 남음';el.classList.remove('over')}
+    else{el.textContent='+'+t+' 지연';el.classList.add('over')}
+  });
+  document.querySelectorAll('[data-since]').forEach(el=>{const m=Math.floor((now-+el.dataset.since)/MIN);el.textContent=m+'분'});
+}
+function render(){renderList();renderDetail();renderAlerts();renderLog();dirty=false;updateClocks()}
+
+/* ── 다이어그램 ── */
+function drawFlow(){
+  const W=160,H=56;
+  const N=[
+    ['01','내원 · KTAS 분류','접수/트리아지',20,50,''],
+    ['02','환자 등록','등록번호 생성 (ADT)',200,50,''],
+    ['03','오더 입력','단일 코드 / 세트 코드',200,180,'sys'],
+    ['04','OCS 전송','ORM 오더 메시지',380,180,'sys'],
+    ['05','진단검사','채혈 · 검사 · 결과',560,290,''],
+    ['06','영상 · 기능검사','촬영 · 판독',560,350,''],
+    ['07','결과 수신 · 모니터링','ORU 결과 → 결과지',740,180,'sys'],
+    ['08','Critical 알림창','확인(노티) 기록',740,50,'alert'],
+    ['09','체크포인트 판단','기한 · 예정 시점 감시',920,180,'sys'],
+    ['10','다음 단계 · 처분','재검 · 협진 · 입원/퇴원',1100,50,''],
+  ];
+  const node=n=>`<g class="node ${n[5]}"><rect x="${n[3]}" y="${n[4]}" width="${W}" height="${n[4]>=290?50:H}" rx="7"/>
+    <text class="n" x="${n[3]+10}" y="${n[4]+16}">${n[0]}</text><text class="t" x="${n[3]+30}" y="${n[4]+17}">${n[1]}</text>
+    <text class="s" x="${n[3]+10}" y="${n[4]+(n[4]>=290?37:40)}">${n[2]}</text></g>`;
+  const e=(d,cls,lab,lx,ly)=>`<path class="edge ${cls||''}" d="${d}" marker-end="url(#${cls==='loop'?'ah2':'ah'})"/>${lab?`<text class="edge-l ${cls||''}" x="${lx}" y="${ly}">${lab}</text>`:''}`;
+  $('flowbox').innerHTML=`<svg viewBox="0 0 1290 420" role="img" aria-label="응급실 OCS 연동 워크플로우">
+    <defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah" d="M0 0L10 5L0 10z"/></marker>
+    <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path class="ah2" d="M0 0L10 5L0 10z"/></marker></defs>
+    <rect class="lane1" x="0" y="0" width="1290" height="130"/><rect class="lane2" x="0" y="130" width="1290" height="140"/><rect class="lane3" x="0" y="270" width="1290" height="150"/>
+    <text class="lane-t" x="12" y="20">의료진 (접수 · 진료)</text><text class="lane-t" x="12" y="150">OCS · 연동 모듈</text><text class="lane-t" x="12" y="290">검사 부서</text>
+    ${e('M180 78H198')}
+    ${e('M280 106V178')}
+    ${e('M360 208H378')}
+    ${e('M540 208H550V315H558')}
+    ${e('M540 208H550V375H558')}
+    ${e('M720 315H820V238')}
+    ${e('M720 375H820V315')}
+    ${e('M820 178V108','', '이상치 · Critical',826,146)}
+    ${e('M900 208H918','', '',0,0)}
+    ${e('M900 78H1000V178','', '확인 후',1006,146)}
+    ${e('M1080 208H1180V108','', '달성',1186,146)}
+    ${e('M1000 236V256H280V238','loop','지연 · 재검 예정 시점 도달 → 재오더',560,250)}
+    ${N.map(node).join('')}
+    <text class="edge-l" x="904" y="200">정상</text>
+  </svg>`;
+}
+
+/* ── 노트 ── */
+function drawNotes(){
+  const codes=Object.entries(CAT).map(([k,c])=>`<li><span class="mono">${k}</span> ${c.n} <span class="muted">(${CATNAME[c.c]}, 결과 약 ${c.tat}분)</span></li>`).join('');
+  const sets=Object.entries(SETS).map(([k,s])=>`<li><span class="mono">${k}</span> ${s.n}: <span class="mono">${s.codes.join(' ')}</span></li>`).join('');
+  $('notes').innerHTML=`
+  <div><h3>오더 코드 (예시)</h3><ul>${codes}</ul></div>
+  <div><h3>세트 코드 (예시)</h3><ul>${sets}</ul>
+    <h3 style="margin-top:12px">입력 방법</h3><ul><li>단일: <span class="mono">CBC</span></li><li>여러 개: <span class="mono">CBC, CRP</span> 또는 <span class="mono">CBC CRP</span></li><li>세트: <span class="mono">SET-CP</span> (앞에 # 붙여도 됨)</li><li>혼합: <span class="mono">SET-CP CRP</span></li><li>진행 중인 같은 오더는 중복으로 보고 제외</li></ul></div>
+  <div><h3>체크포인트 시간 기준</h3><ul>
+    <li>흉통: 내원 10분 이내 심전도 — 2021 AHA/ACC 흉통 가이드라인</li>
+    <li>뇌졸중: CT 시작 25분 · 판독 45분 — AHA/ASA 급성 허혈성 뇌졸중 가이드라인 목표</li>
+    <li>패혈증: 젖산 측정·재측정(>2), 항생제 전 혈액배양, 1시간 내 항생제, 젖산 ≥4 시 수액 30 mL/kg — Surviving Sepsis Campaign Hour-1 Bundle (2018)</li>
+    <li>트로포닌 0/2h 재검, 참고치 34 ng/L, Critical 기준은 장비·병원마다 달라 예시로만 넣었습니다</li></ul></div>
+  <div><h3>실제 OCS와 연결하려면</h3><ul>
+    <li>병원 OCS/EMR이 외부 연동을 어떤 방식으로 허용하는지(HL7 v2 ORM/ORU, FHIR ServiceRequest·DiagnosticReport, 벤더 전용 API, DB 뷰 등)는 병원 전산팀 확인이 필요합니다. 여기서는 알 수 없습니다.</li>
+    <li>오더 코드는 병원 고유 처방 코드로 매핑해야 합니다.</li>
+    <li>Critical 기준과 노티 절차는 병원 진단검사의학과·영상의학과 규정을 따라야 합니다.</li>
+    <li>실환자 정보는 병원 승인된 시스템 안에서만 다뤄야 합니다.</li></ul></div>`;
+}
+
+/* ── 이벤트 ── */
+document.addEventListener('click',ev=>{
+  const b=ev.target.closest('[data-act]');if(!b)return;
+  const act=b.dataset.act,v=b.dataset.v;
+  if(act==='sel'){S.sel=b.dataset.pid;dirty=true}
+  else if(act==='speed'){speed=+v;paused=false;syncBar()}
+  else if(act==='pause'){paused=!paused;syncBar()}
+  else if(act==='jump'){now+=(+v)*MIN;process();dirty=true}
+  else if(act==='reset'){init();syncBar()}
+  else if(act==='ack'){const a=S.alerts.find(x=>x.id===v);if(a&&!a.ack){a.ack=now;const p=S.patients.find(x=>x.id===a.pid);const o=p&&p.orders.find(x=>x.id===a.oid);if(o&&!o.ack)o.ack=now;log('→',`ACK  ${a.oid||a.id}  결과 확인 (노티 수신)`);dirty=true}}
+  else if(act==='quick'){const p=S.patients.find(x=>x.id===b.dataset.pid);if(p&&CAT[v]){placeOrder(p,v,null);alert_(p,'info',`오더 전송 · ${CAT[v].n}`,`${v} 1건`);process()}}
+  else if(act==='fill'){$('orderInput').value=v;updatePreview();$('orderInput').focus()}
+  else if(act==='dispo'){const p=S.patients.find(x=>x.id===b.dataset.pid);if(p){p.dispo={type:v,t:now};log('→',`ADT^A0${v==='퇴원'?'3':'2'}  PID|${p.regNo}  처분|${v}`);alert_(p,'ok',`처분 · ${v}`,`${hm(now)} 처분 입력`);dirty=true}}
+  if(dirty)render();
+});
+$('orderInput').addEventListener('input',updatePreview);
+$('orderForm').addEventListener('submit',ev=>{
+  ev.preventDefault();const p=sel();if(!p)return;
+  const {out,bad}=parse($('orderInput').value,p);
+  const send=out.filter(x=>!x.dup);
+  if(bad.length){alert_(p,'warn','알 수 없는 코드',bad.join(', ')+' — 코드 목록을 확인하세요')}
+  if(!send.length){if(!bad.length)alert_(p,'warn','전송할 오더 없음','모두 진행 중인 오더와 중복입니다');render();return}
+  send.forEach(x=>placeOrder(p,x.code,x.set));
+  const sets=[...new Set(send.filter(x=>x.set).map(x=>x.set))];
+  alert_(p,'info',`OCS 전송 ${send.length}건`,(sets.length?sets.join(', ')+' 전개 · ':'')+send.map(x=>x.code).join(' '));
+  $('orderInput').value='';process();render();
+});
+$('regForm').addEventListener('submit',ev=>{
+  ev.preventDefault();
+  if(S.patients.length>=8){return}
+  const p=newPatient({name:$('rName').value.trim()||'무명',sex:$('rSex').value,age:Math.max(0,Math.min(120,+$('rAge').value||0)),ktas:+$('rKtas').value,cc:$('rCc').value.trim(),path:$('rPath').value,arrive:now});
+  S.sel=p.id;alert_(p,'ok','환자 등록',`${p.regNo} · ${PATHNAME[p.path]} 프로토콜 체크포인트 시작`);
+  $('regForm').reset();$('rAge').value=45;process();render();
+});
+function syncBar(){
+  document.querySelectorAll('[data-act="speed"]').forEach(b=>b.classList.toggle('on',+b.dataset.v===speed&&!paused));
+  $('pauseBtn').textContent=paused?'재개':'일시정지';$('pauseBtn').classList.toggle('on',paused);
+}
+
+$('codeList').innerHTML=Object.keys(SETS).concat(Object.keys(CAT)).map(k=>`<option value="${k}">${SETS[k]?SETS[k].n:CAT[k].n}</option>`).join('');
+drawFlow();drawNotes();init();syncBar();render();
+let lastReal=Date.now(),lastToastCheck=0;
+setInterval(()=>{
+  const r=Date.now();const dt=r-lastReal;lastReal=r;
+  if(!paused){now+=dt*speed;process()}
+  if(r-lastToastCheck>1000){lastToastCheck=r;if(S.alerts.some(a=>a.until<r&&a.until>r-1100))dirty=true}
+  if(dirty)render();else updateClocks();
+},250);
+})();
+</script>
