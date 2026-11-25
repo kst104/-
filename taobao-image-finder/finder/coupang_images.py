@@ -58,6 +58,7 @@ def main(argv=None):
     ap.add_argument("--no-detail", action="store_true")
     ap.add_argument("--debug", action="store_true")
     ap.add_argument("--headless", action="store_true")
+    ap.add_argument("--cdp", help="이미 켜둔 브라우저에 연결 (예: http://localhost:9222)")
     args = ap.parse_args(argv)
 
     targets = list(args.targets)
@@ -69,7 +70,7 @@ def main(argv=None):
 
     out_root = Path(args.out).expanduser()
     failed = []
-    with open_context(Path(args.profile), headless=args.headless) as ctx:
+    with open_context(Path(args.profile), headless=args.headless, cdp=args.cdp) as ctx:
         for i, t in enumerate(targets, 1):
             print(f"[{i}/{len(targets)}] {t}")
             try:

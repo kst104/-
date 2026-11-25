@@ -40,6 +40,14 @@ python -m finder.coupang_images --file links.txt        # 한 줄에 링크나 �
 - `index.html`: 미리보기
 `--no-detail`을 주면 대표 이미지만 받습니다.
 
+### 이미 켜둔 브라우저로 받기 (`--cdp`)
+원격 디버깅 포트를 지원하는 Chromium 계열 브라우저라면 새 창을 띄우지 않고 그 브라우저에 붙어서 받을 수 있습니다. 이때는 그 브라우저의 로그인 상태를 그대로 쓰고, 작업이 끝나도 브라우저를 닫지 않습니다.
+```bash
+"/Applications/<브라우저>.app/Contents/MacOS/<실행파일>" --remote-debugging-port=9222
+python -m finder.coupang_images <링크> --cdp http://localhost:9222
+```
+Aside 브라우저가 이 방식을 지원하는지는 확인하지 못했습니다. 브라우저를 켠 뒤 `http://localhost:9222/json/version`이 열리면 지원하는 것입니다.
+
 ## 쿠팡파트너스 검색결과 배너 이미지만 받기
 공식 파트너스 Open API를 사용합니다. 브라우저나 로그인이 필요 없고, 차단될 걱정도 적습니다.
 ```bash

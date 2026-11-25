@@ -16,8 +16,18 @@ UA = (
 
 
 @contextlib.contextmanager
-def open_context(profile: Path = DEFAULT_PROFILE, headless: bool = False):
+def open_context(profile: Path = DEFAULT_PROFILE, headless: bool = False, cdp: str | None = None):
+    """cdp 를 주면 이미 실행 중인 Chromium 계열 브라우저(원격 디버깅 포트)에 붙는다.
+    예: 브라우저를 --remote-debugging-port=9222 로 실행 후 cdp="http://localhost:9222".
+    이때는 그 브라우저의 로그인 상태를 그대로 쓰고, 끝나도 브라우저를 닫지 않는다."""
     from playwright.sync_api import sync_playwright
+
+    if cdp:
+        with sync_playwright() as p:
+            browser = p.chromium.connect_over_cdp(cdp)
+            ctx = browser.contexts[0] if browser.contexts else browser.new_context()
+            yield ctx
+        return
 
     profile.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:
