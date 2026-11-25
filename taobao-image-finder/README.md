@@ -27,6 +27,19 @@ taobao/<상품ID>/ thumb_*.jpg  img_*.jpg
 index.html      results.json
 ```
 
+## 쿠팡파트너스 검색결과 배너 이미지만 받기
+공식 파트너스 Open API를 사용합니다. 브라우저나 로그인이 필요 없고, 차단될 걱정도 적습니다.
+```bash
+export COUPANG_ACCESS_KEY=...  COUPANG_SECRET_KEY=...    # 파트너스 API 키 (최종 승인 회원만 발급)
+python -m finder.partners "무선 이어폰" --limit 10
+python -m finder.partners "무선 이어폰" --only https://www.coupang.com/vp/products/7335597976
+```
+결과는 `output/partners/<키워드>/`에 저장됩니다.
+- `001_<상품번호>_001.jpg` 형식의 이미지 파일
+- `banners.json`: 상품명, 가격, 파트너스 링크, 이미지 원본 URL
+
+API에는 상품번호로 바로 조회하는 기능이 없습니다. 그래서 `--only`는 키워드로 검색한 뒤 결과에서 해당 상품만 골라냅니다. 시간당 호출 한도가 있으니 최신 한도는 파트너스 도움말에서 확인하세요.
+
 ## 알아둘 점
 - **로그인이 필요합니다.** 타오바오 이미지검색은 로그인해야 쓸 수 있습니다. 로그인 세션은 `~/.taobao-image-finder/profile`에 저장됩니다.
 - **봇 차단이 있습니다.** 쿠팡은 자동화 접속을 자주 차단합니다. 그래서 브라우저 창을 띄운 채 실행하는 것이 기본입니다. 차단 화면이 나오면 직접 통과시킨 뒤 Enter를 누르세요.
