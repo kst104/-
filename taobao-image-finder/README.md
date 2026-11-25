@@ -27,6 +27,19 @@ taobao/<상품ID>/ thumb_*.jpg  img_*.jpg
 index.html      results.json
 ```
 
+## 쿠팡 이미지만 받기 (API 키 불필요)
+쿠팡 상품 페이지를 브라우저로 열어 대표 이미지와 상세 이미지를 저장합니다. 타오바오 검색은 하지 않습니다.
+```bash
+python -m finder.coupang_images https://www.coupang.com/vp/products/7335597976
+python -m finder.coupang_images 7335597976 8123456789 --out ~/Downloads/coupang
+python -m finder.coupang_images --file links.txt        # 한 줄에 링크나 번호 하나
+```
+결과는 `<out>/coupang_<번호>/`에 저장됩니다.
+- `main_001.jpg`…, `detail_001.jpg`…
+- `info.json`: 상품 URL, 상품명, 판매자, 각 이미지의 원본 URL
+- `index.html`: 미리보기
+`--no-detail`을 주면 대표 이미지만 받습니다.
+
 ## 쿠팡파트너스 검색결과 배너 이미지만 받기
 공식 파트너스 Open API를 사용합니다. 브라우저나 로그인이 필요 없고, 차단될 걱정도 적습니다.
 ```bash

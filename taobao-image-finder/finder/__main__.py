@@ -43,7 +43,24 @@ def fetch_coupang(ctx, text: str, debug: Path | None) -> coupang.CoupangProduct:
     if "Access Denied" in (page.title() or "") or "denied" in page.content()[:3000].lower():
         input("쿠팡이 접속을 차단했습니다. 브라우저에서 페이지가 보이게 한 뒤 Enter ▶ ")
     auto_scroll(page, steps=30)  # 상세 이미지 지연로딩
+    # '상세정보 펼쳐보기' 류 버튼이 있으면 눌러서 접힌 상세 이미지까지 노출
+    for label in ["상세정보 펼쳐보기", "상품정보 더보기", "펼쳐보기", "더보기"]:
+        btn = page.get_by_text(label, exact=False).first
+        try:
+            if btn.is_visible(timeout=500):
+                btn.click(timeout=2000)
+                page.wait_for_timeout(1000)
+                auto_scroll(page, steps=30)
+                break
+        except Exception:
+            pass
+    # 상세가 iframe 안에 있는 경우까지 포함해 모든 프레임 HTML 합침
     html = page.content()
+    for fr in page.frames[1:]:
+        try:
+            html += "\n" + fr.content()
+        except Exception:
+            pass
     if debug:
         debug.mkdir(parents=True, exist_ok=True)
         page.screenshot(path=str(debug / "coupang.png"))
